@@ -1,0 +1,5 @@
+names:
+- ayana_tram
+nc: 1
+train: /Users/fchrulk/AHM/Production/tram_detection/data/images/train
+val: /Users/fchrulk/AHM/Production/tram_detection/data/images/val
