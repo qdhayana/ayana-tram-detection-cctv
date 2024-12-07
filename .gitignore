@@ -2,6 +2,3 @@ __pycache__
 .DS_STORE
 *.py[cod]
 production/
-*.pt
-runs/
-build_custom_model/runs/
