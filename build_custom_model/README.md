@@ -115,7 +115,7 @@ model, results = train_custom_model(
 - `imgsz`: Input image size
 - `batch_size`: Number of images processed at once
 
-## Estimated Train Process Time using Apple MacBook M3
+## Estimated Train Process Time using Apple M2 Pro
 - CPU: Several hours to days (depending on dataset size and model size)
 - GPU: 2-8 hours (depending on GPU capability)
 - n (nano) = 45mins~

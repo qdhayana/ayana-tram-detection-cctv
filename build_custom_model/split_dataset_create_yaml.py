@@ -69,8 +69,8 @@ def create_dataset_splits(
     yaml_content = {
         'train': './data/images/train',  # Relative paths
         'val': './data/images/val',
-        'nc': 1,  # number of classes
-        'names': ['ayana_tram']  # class names
+        'nc': 4,  # number of classes
+        'names': ['ayana_tram', 'unknown', 'car', 'ayana_buggy']  # class names
     }
     
     import yaml
