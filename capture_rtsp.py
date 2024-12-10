@@ -18,15 +18,7 @@ def should_stop_capture():
     return sg_time.hour >= 23  # 23:00 = 11 PM
 
 def compress_frame(frame, method='png', quality=9):
-    """
-    Compress frame using different methods
-    
-    Parameters:
-    - method: 'png' (lossless) or 'jpeg' (lossy)
-    - quality: 
-        For PNG: 0-9 (9 is best compression, default)
-        For JPEG: 0-100 (100 is best quality)
-    """
+    """Compress frame using different methods"""
     if method == 'jpeg':
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
         _, buffer = cv2.imencode('.jpg', frame, encode_param)
@@ -68,15 +60,14 @@ def capture_rtsp_frames(date,
         os.makedirs(save_directory)
     
     reconnect_count = 0
+    last_capture_time = 0
     
     while True:
-        # Check if it's time to stop
         if should_stop_capture():
             print("\nStopping capture - reached 11 PM Singapore time")
             break
 
         try:
-            # Initial connection
             cap = connect_rtsp(rtsp_url)
             if cap is None:
                 print(f"{name}: Could not establish initial connection. Retrying...")
@@ -88,12 +79,10 @@ def capture_rtsp_frames(date,
             print(f"Current Singapore time: {sg_time.strftime('%Y-%m-%d %H:%M:%S')}")
             
             while True:
-                # Check if it's time to stop
                 if should_stop_capture():
                     print("\nStopping capture - reached 11 PM Singapore time")
                     return
 
-                # Read frame
                 ret, frame = cap.read()
                 
                 if not ret:
@@ -104,10 +93,7 @@ def capture_rtsp_frames(date,
                         print(f"Exceeded maximum reconnection attempts ({max_reconnect_attempts})")
                         return
                     
-                    # Release current connection
                     cap.release()
-                    
-                    # Attempt to reconnect
                     cap = connect_rtsp(rtsp_url)
                     if cap is None:
                         print(f"Reconnection failed. Waiting {reconnect_delay} seconds before next attempt...")
@@ -117,45 +103,55 @@ def capture_rtsp_frames(date,
                     print(f"{name}: Successfully reconnected to stream")
                     continue
                 
-                # Reset reconnect count on successful frame capture
                 reconnect_count = 0
                 
-                try:
-                    # Calculate new dimensions maintaining aspect ratio
-                    height, width = frame.shape[:2]
-                    aspect_ratio = width / height
-                    new_width = resize_width
-                    new_height = int(new_width / aspect_ratio)
-                    
-                    # Resize the frame
-                    resized_frame = cv2.resize(frame, (new_width, new_height), 
-                                         interpolation=cv2.INTER_AREA)
-                    
-                    # Compress the frame
-                    compressed_frame = compress_frame(resized_frame, 
-                                                   method=compression_method,
-                                                   quality=quality)
-                    
-                    # Generate timestamp for filename (in Singapore time)
-                    sg_time = get_singapore_time()
-                    timestamp = sg_time.strftime("%Y%m%d_%H%M%S")
-                    ext = '.jpg' if compression_method == 'jpeg' else '.png'
-                    filename = f"frame_{timestamp}{ext}"
-                    filepath = os.path.join(save_directory, filename)
-                    
-                    # Save frame
-                    cv2.imwrite(filepath, compressed_frame)
-                    
-                    # Get file size
-                    file_size = os.path.getsize(filepath) / 1024  # Size in KB
-                    print(f"{name}: saved frame - {filename} (Size: {file_size:.1f} KB)")
-                    
-                except Exception as e:
-                    print(f"Error processing frame: {str(e)}")
-                    continue
+                # Display the frame
+                cv2.imshow(f'CCTV Stream - {name}', frame)
                 
-                # Wait for specified interval
-                time.sleep(interval)
+                # Check if it's time to capture a frame
+                current_time = time.time()
+                if current_time - last_capture_time >= interval:
+                    try:
+                        # Calculate new dimensions maintaining aspect ratio
+                        height, width = frame.shape[:2]
+                        aspect_ratio = width / height
+                        new_width = resize_width
+                        new_height = int(new_width / aspect_ratio)
+                        
+                        # Resize the frame
+                        resized_frame = cv2.resize(frame, (new_width, new_height), 
+                                             interpolation=cv2.INTER_AREA)
+                        
+                        # Compress the frame
+                        compressed_frame = compress_frame(resized_frame, 
+                                                       method=compression_method,
+                                                       quality=quality)
+                        
+                        # Generate timestamp for filename (in Singapore time)
+                        sg_time = get_singapore_time()
+                        timestamp = sg_time.strftime("%Y%m%d_%H%M%S")
+                        ext = '.jpg' if compression_method == 'jpeg' else '.png'
+                        filename = f"frame_{timestamp}{ext}"
+                        filepath = os.path.join(save_directory, filename)
+                        
+                        # Save frame
+                        cv2.imwrite(filepath, compressed_frame)
+                        
+                        # Get file size
+                        file_size = os.path.getsize(filepath) / 1024  # Size in KB
+                        print(f"{name}: saved frame - {filename} (Size: {file_size:.1f} KB)")
+                        
+                        last_capture_time = current_time
+                        
+                    except Exception as e:
+                        print(f"Error processing frame: {str(e)}")
+                        continue
+                
+                # Check for 'q' key to quit
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
+                    print("\nUser requested to stop...")
+                    return
                 
         except KeyboardInterrupt:
             print("\nStopping capture...")
@@ -170,6 +166,7 @@ def capture_rtsp_frames(date,
         finally:
             if 'cap' in locals() and cap is not None:
                 cap.release()
+            cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     print("Available cctv_names:")
