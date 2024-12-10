@@ -1,9 +1,12 @@
 import cv2
+import argparse
 import time
 import os
 from datetime import datetime
 import numpy as np
 import pytz
+from ultralytics import YOLO
+import shutil
 from rtsp_conf import cctvs
 
 def get_singapore_time():
@@ -42,22 +45,104 @@ def connect_rtsp(rtsp_url, max_retries=3, retry_delay=2):
         time.sleep(retry_delay)
     return None
 
-def capture_rtsp_frames(date,
-                        cctv_name, 
-                        save_directory="captured_frames", 
+def detecting_object(model, confidence_threshold, image_directory, filename, output_directory, processed_directory):
+    # Get Singapore timezone
+    sg_tz = pytz.timezone('Asia/Singapore')
+
+    try:
+        # Full path to image
+        image_path = os.path.join(image_directory, filename)
+        
+        # Read image
+        image = cv2.imread(image_path)
+        if image is None:
+            print(f"Could not read image: {filename}")
+        
+        # Get timestamp from filename (assuming format "frame_YYYYMMDD_HHMMSS.jpg")
+        timestamp_str = filename.split('frame_')[1].split('.')[0]
+        timestamp = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
+        timestamp = sg_tz.localize(timestamp)
+        
+        # Perform detection
+        results = model.predict(
+            source=image,
+            conf=confidence_threshold,
+            verbose=False
+        )
+        
+        # Process results
+        if len(results[0].boxes) > 0:
+            # Get the image for drawing
+            annotated_frame = results[0].plot()
+            
+            # Add timestamp to image
+            cv2.putText(
+                annotated_frame,
+                timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 255, 0),
+                2
+            )
+            
+            # Save annotated image
+            output_path = os.path.join(output_directory, f"detected_{filename}")
+            cv2.imwrite(output_path, annotated_frame)
+            
+            # Print detections in a compact format
+            print("Object detected:")
+            for result in results:
+                for box in result.boxes:
+                    class_name = result.names[int(box.cls)]
+                    confidence = float(box.conf)
+                    print(f"- {class_name}: {confidence:.2f}")
+            
+        else:
+            print(f"No object detected.")
+
+        shutil.move(image_path, processed_directory)
+        
+    except Exception as e:
+        print(f"Error processing {filename}: {str(e)}")
+        
+def detect_tram_on_cctv(cctv_name, 
                         interval=10,
                         resize_width=800,
                         compression_method='png',
                         quality=9,
                         reconnect_delay=5,
-                        max_reconnect_attempts=float('inf')):
+                        max_reconnect_attempts=float('inf'),
+                        model=None,
+                        confidence_threshold=0.5,):
     
-    save_directory = cctv_name + '_captured_frames/' + date
+    # Get current Singapore time
+    date = (datetime.now(pytz.timezone('Asia/Singapore'))).strftime('%Y%m%d')
+
+    # Check if cctv_name is valid
+    valid_cctv = list(cctvs.keys())
+    valid_cctv = ["- `{}`".format(cctv) for cctv in valid_cctv]
+    if cctv_name not in cctvs:
+        print("Invalid CCTV name: `{}`!\nPlease use available options:\n{}".format(cctv_name, '\n'.join(valid_cctv)))
+        exit()
+
     rtsp_url = cctvs[cctv_name]
     name = cctv_name.replace('_', ' ').title()
 
+    # Create save directory
+    save_directory = 'production/' + cctv_name + '/' + date + '/captured_frames'
     if not os.path.exists(save_directory):
         os.makedirs(save_directory)
+
+    # Create detection directory
+    detection_directory = 'production/' + cctv_name + '/' + date + '/output'
+    if not os.path.exists(detection_directory):
+        os.makedirs(detection_directory)
+
+    # Create processed directory
+    processed_directory = 'production/' + cctv_name + '/' + date + '/processed_frames/'
+    if not os.path.exists(processed_directory):
+        os.makedirs(processed_directory)
     
     reconnect_count = 0
     last_capture_time = 0
@@ -142,6 +227,9 @@ def capture_rtsp_frames(date,
                         print(f"{name}: saved frame - {filename} (Size: {file_size:.1f} KB)")
                         
                         last_capture_time = current_time
+
+                        # Detect AYANA's Tram
+                        detecting_object(model, confidence_threshold, save_directory, filename, detection_directory, processed_directory)
                         
                     except Exception as e:
                         print(f"Error processing frame: {str(e)}")
@@ -168,27 +256,22 @@ def capture_rtsp_frames(date,
                 cap.release()
             cv2.destroyAllWindows()
 
-if __name__ == "__main__":
-    print("Available cctv_names:")
-    for cctv_name in cctvs:
-        print(f"- {cctv_name}")
+if __name__ == '__main__':
+    ap = argparse.ArgumentParser()
+    ap.add_argument('-cctv_name', '--cctv_name', required=True)
+    args = vars(ap.parse_args())
 
-    cctv_name = input('Enter cctv_name: ')
-    if cctv_name not in cctvs:
-        print(f"Invalid cctv_name: {cctv_name}")
-        exit()
+    # Load the trained model
+    ## Replace with your actual model path
+    model_path = "build_custom_model/runs/train/20241209_231950/weights/best.pt"  # Update this path if needed
+    model = YOLO(model_path)
 
-    # Get current Singapore time
-    date = (datetime.now(pytz.timezone('Asia/Singapore'))).strftime('%Y%m%d')
-
-    # Start capturing frames
-    capture_rtsp_frames(
-        date,
-        cctv_name,
-        interval=10,                    # Capture interval in seconds
-        resize_width=800,               # Resize width
-        compression_method='png',       # Compression method ('jpeg' or 'png')
-        quality=9,                      # Compression quality
-        reconnect_delay=2,              # Delay between reconnection attempts
-        max_reconnect_attempts=100      # Maximum number of reconnection attempts
-    )
+    print(f"Model loaded from: {model_path}")
+    detect_tram_on_cctv(args['cctv_name'], 
+                        interval=10,
+                        resize_width=800,
+                        compression_method='png',
+                        quality=9,
+                        reconnect_delay=5,
+                        max_reconnect_attempts=float('inf'),
+                        model=model)
