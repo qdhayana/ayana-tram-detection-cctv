@@ -135,7 +135,14 @@ def detect_tram_on_cctv(cctv_name,
     name = cctv_name.replace('_', ' ').title()
     window_name = f'CCTV Stream - {name}'
 
-    # ... (directory creation code remains the same)
+    # Create directories
+    save_directory = f'production/{cctv_name}/{date}/captured_frames'
+    detection_directory = f'production/{cctv_name}/{date}/output'
+    processed_directory = f'production/{cctv_name}/{date}/processed_frames'
+    
+    for directory in [save_directory, detection_directory, processed_directory]:
+        if not os.path.exists(directory):
+            os.makedirs(directory)
 
     try:
         while True:
