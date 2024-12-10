@@ -111,16 +111,14 @@ def detecting_object(model, confidence_threshold, image_directory, filename, out
         print(f"Error processing {filename}: {str(e)}")
 
 def detect_tram_on_cctv(cctv_name, 
-                        interval=10,
+                        interval=5,
                         resize_width=800,
                         compression_method='png',
                         quality=9,
-                        reconnect_delay=10,
+                        reconnect_delay=2,
                         max_reconnect_attempts=float('inf'),
                         model=None,
-                        confidence_threshold=0.5,
-                        display_width=640,
-                        display_feed=True):  # Add display_feed parameter
+                        confidence_threshold=0.5):
 
     # Get current Singapore time
     date = (datetime.now(pytz.timezone('Asia/Singapore'))).strftime('%Y%m%d')
@@ -133,7 +131,6 @@ def detect_tram_on_cctv(cctv_name,
 
     rtsp_url = cctvs[cctv_name]
     name = cctv_name.replace('_', ' ').title()
-    window_name = f'CCTV Stream - {name}'
 
     # Create directories
     save_directory = f'production/{cctv_name}/{date}/captured_frames'
@@ -143,6 +140,8 @@ def detect_tram_on_cctv(cctv_name,
     for directory in [save_directory, detection_directory, processed_directory]:
         if not os.path.exists(directory):
             os.makedirs(directory)
+
+    reconnect_count = 0  # Initialize reconnect_count here
 
     try:
         while True:
@@ -156,9 +155,6 @@ def detect_tram_on_cctv(cctv_name,
                 cap = connect_rtsp(rtsp_url)
                 
                 if cap is None:
-                    # Close any existing windows when connection fails
-                    if display_feed:
-                        cv2.destroyAllWindows()
                     reconnect_count += 1
                     if reconnect_count >= max_reconnect_attempts:
                         print(f"{name}: Exceeded maximum reconnection attempts ({max_reconnect_attempts})")
@@ -175,9 +171,6 @@ def detect_tram_on_cctv(cctv_name,
                 ret, frame = cap.read()
                 
                 if not ret:
-                    # Close window if frame capture fails
-                    if display_feed:
-                        cv2.destroyAllWindows()
                     reconnect_count += 1
                     if reconnect_count >= max_reconnect_attempts:
                         print(f"{name}: Exceeded maximum reconnection attempts ({max_reconnect_attempts})")
@@ -212,12 +205,6 @@ def detect_tram_on_cctv(cctv_name,
                     
                     cv2.imwrite(filepath, compressed_frame)
 
-                    # Display frame if display_feed is True
-                    if display_feed:
-                        display_height = int(display_width * (height/width))
-                        display_frame = cv2.resize(frame, (display_width, display_height))
-                        cv2.imshow(window_name, display_frame)
-
                     # Get file size and print info
                     file_size = os.path.getsize(filepath) / 1024
                     print(f"{name}: saved frame - {filename} (Size: {file_size:.1f} KB)")
@@ -233,28 +220,16 @@ def detect_tram_on_cctv(cctv_name,
                     # Release the capture object
                     cap.release()
                     print(f"{name}: Disconnected from RTSP stream")
-                    # Close the window when disconnected if display_feed is True
-                    if display_feed:
-                        cv2.destroyWindow(window_name)
 
                 # Wait for the specified interval before next capture
                 print(f"Waiting {interval} seconds before next capture...")
-                for i in range(interval):
-                    if display_feed:
-                        key = cv2.waitKey(1) & 0xFF
-                        if key == ord('q'):
-                            print("\nUser requested to stop...")
-                            return
-                    time.sleep(1)
+                time.sleep(interval)
 
             except KeyboardInterrupt:
                 print("\nStopping capture...")
                 break
                 
             except Exception as e:
-                # Close window on unexpected errors
-                if display_feed:
-                    cv2.destroyAllWindows()
                 reconnect_count += 1
                 if reconnect_count >= max_reconnect_attempts:
                     print(f"{name}: Exceeded maximum reconnection attempts ({max_reconnect_attempts})")
@@ -268,16 +243,11 @@ def detect_tram_on_cctv(cctv_name,
         # Ensure everything is properly cleaned up
         if 'cap' in locals() and cap is not None:
             cap.release()
-        if display_feed:
-            cv2.destroyAllWindows()
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('-cctv_name', '--cctv_name', required=True,
                     help='Name of the CCTV camera to capture from')
-    ap.add_argument('-display', '--display_feed', 
-                    action='store_true',
-                    help='Display live feed (default: False)')
     args = vars(ap.parse_args())
 
     # Load the trained model
@@ -292,6 +262,4 @@ if __name__ == '__main__':
                         quality=9,
                         reconnect_delay=5,
                         max_reconnect_attempts=float('inf'),
-                        model=model,
-                        display_width=640,
-                        display_feed=args['display_feed'])  # Pass the display_feed argument
+                        model=model)
