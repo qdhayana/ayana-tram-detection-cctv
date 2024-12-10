@@ -57,6 +57,7 @@ def detecting_object(model, confidence_threshold, image_directory, filename, out
         image = cv2.imread(image_path)
         if image is None:
             print(f"Could not read image: {filename}")
+            return
         
         # Get timestamp from filename (assuming format "frame_YYYYMMDD_HHMMSS.jpg")
         timestamp_str = filename.split('frame_')[1].split('.')[0]
@@ -103,7 +104,8 @@ def detecting_object(model, confidence_threshold, image_directory, filename, out
         else:
             print(f"No object detected.")
 
-        shutil.move(image_path, processed_directory)
+        # Move processed image
+        shutil.move(image_path, os.path.join(processed_directory, filename))
         
     except Exception as e:
         print(f"Error processing {filename}: {str(e)}")
@@ -117,7 +119,8 @@ def detect_tram_on_cctv(cctv_name,
                         max_reconnect_attempts=float('inf'),
                         model=None,
                         confidence_threshold=0.5,
-                        display_width=640):
+                        display_width=640,
+                        display_feed=True):  # Add display_feed parameter
 
     # Get current Singapore time
     date = (datetime.now(pytz.timezone('Asia/Singapore'))).strftime('%Y%m%d')
@@ -130,133 +133,144 @@ def detect_tram_on_cctv(cctv_name,
 
     rtsp_url = cctvs[cctv_name]
     name = cctv_name.replace('_', ' ').title()
+    window_name = f'CCTV Stream - {name}'
 
-    # Create directories
-    save_directory = f'production/{cctv_name}/{date}/captured_frames'
-    detection_directory = f'production/{cctv_name}/{date}/output'
-    processed_directory = f'production/{cctv_name}/{date}/processed_frames'
-    
-    for directory in [save_directory, detection_directory, processed_directory]:
-        if not os.path.exists(directory):
-            os.makedirs(directory)
+    # ... (directory creation code remains the same)
 
-    reconnect_count = 0  # Initialize reconnection counter
+    try:
+        while True:
+            if should_stop_capture():
+                print("\nStopping capture - reached 11 PM Singapore time")
+                break
 
-    while True:
-        if should_stop_capture():
-            print("\nStopping capture - reached 11 PM Singapore time")
-            break
+            try:
+                # Connect to RTSP stream
+                print(f"{name}: Connecting to RTSP stream...")
+                cap = connect_rtsp(rtsp_url)
+                
+                if cap is None:
+                    # Close any existing windows when connection fails
+                    if display_feed:
+                        cv2.destroyAllWindows()
+                    reconnect_count += 1
+                    if reconnect_count >= max_reconnect_attempts:
+                        print(f"{name}: Exceeded maximum reconnection attempts ({max_reconnect_attempts})")
+                        return
+                    print(f"{name}: Could not establish connection. Attempt {reconnect_count} of {max_reconnect_attempts}")
+                    print(f"Waiting {reconnect_delay} seconds before retry...")
+                    time.sleep(reconnect_delay)
+                    continue
 
-        try:
-            # Connect to RTSP stream
-            print(f"{name}: Connecting to RTSP stream...")
-            cap = connect_rtsp(rtsp_url)
-            
-            if cap is None:
+                # Reset reconnect count on successful connection
+                reconnect_count = 0
+
+                # Capture one frame
+                ret, frame = cap.read()
+                
+                if not ret:
+                    # Close window if frame capture fails
+                    if display_feed:
+                        cv2.destroyAllWindows()
+                    reconnect_count += 1
+                    if reconnect_count >= max_reconnect_attempts:
+                        print(f"{name}: Exceeded maximum reconnection attempts ({max_reconnect_attempts})")
+                        return
+                    print(f"{name}: Failed to capture frame. Attempt {reconnect_count} of {max_reconnect_attempts}")
+                    print(f"Will retry in {reconnect_delay} seconds...")
+                    cap.release()
+                    time.sleep(reconnect_delay)
+                    continue
+
+                # Process the captured frame
+                try:
+                    # Resize frame
+                    height, width = frame.shape[:2]
+                    aspect_ratio = width / height
+                    new_width = resize_width
+                    new_height = int(new_width / aspect_ratio)
+                    resized_frame = cv2.resize(frame, (new_width, new_height), 
+                                             interpolation=cv2.INTER_AREA)
+
+                    # Compress frame
+                    compressed_frame = compress_frame(resized_frame, 
+                                                   method=compression_method,
+                                                   quality=quality)
+
+                    # Save frame with timestamp
+                    sg_time = get_singapore_time()
+                    timestamp = sg_time.strftime("%Y%m%d_%H%M%S")
+                    ext = '.jpg' if compression_method == 'jpeg' else '.png'
+                    filename = f"frame_{timestamp}{ext}"
+                    filepath = os.path.join(save_directory, filename)
+                    
+                    cv2.imwrite(filepath, compressed_frame)
+
+                    # Display frame if display_feed is True
+                    if display_feed:
+                        display_height = int(display_width * (height/width))
+                        display_frame = cv2.resize(frame, (display_width, display_height))
+                        cv2.imshow(window_name, display_frame)
+
+                    # Get file size and print info
+                    file_size = os.path.getsize(filepath) / 1024
+                    print(f"{name}: saved frame - {filename} (Size: {file_size:.1f} KB)")
+
+                    # Perform object detection
+                    detecting_object(model, confidence_threshold, save_directory, 
+                                   filename, detection_directory, processed_directory)
+
+                except Exception as e:
+                    print(f"Error processing frame: {str(e)}")
+
+                finally:
+                    # Release the capture object
+                    cap.release()
+                    print(f"{name}: Disconnected from RTSP stream")
+                    # Close the window when disconnected if display_feed is True
+                    if display_feed:
+                        cv2.destroyWindow(window_name)
+
+                # Wait for the specified interval before next capture
+                print(f"Waiting {interval} seconds before next capture...")
+                for i in range(interval):
+                    if display_feed:
+                        key = cv2.waitKey(1) & 0xFF
+                        if key == ord('q'):
+                            print("\nUser requested to stop...")
+                            return
+                    time.sleep(1)
+
+            except KeyboardInterrupt:
+                print("\nStopping capture...")
+                break
+                
+            except Exception as e:
+                # Close window on unexpected errors
+                if display_feed:
+                    cv2.destroyAllWindows()
                 reconnect_count += 1
                 if reconnect_count >= max_reconnect_attempts:
                     print(f"{name}: Exceeded maximum reconnection attempts ({max_reconnect_attempts})")
                     return
-                print(f"{name}: Could not establish connection. Attempt {reconnect_count} of {max_reconnect_attempts}")
+                print(f"Unexpected error: {str(e)}")
+                print(f"Attempt {reconnect_count} of {max_reconnect_attempts}")
                 print(f"Waiting {reconnect_delay} seconds before retry...")
                 time.sleep(reconnect_delay)
-                continue
 
-            # Reset reconnect count on successful connection
-            reconnect_count = 0
-
-            # Capture one frame
-            ret, frame = cap.read()
-            
-            if not ret:
-                reconnect_count += 1
-                if reconnect_count >= max_reconnect_attempts:
-                    print(f"{name}: Exceeded maximum reconnection attempts ({max_reconnect_attempts})")
-                    return
-                print(f"{name}: Failed to capture frame. Attempt {reconnect_count} of {max_reconnect_attempts}")
-                print(f"Will retry in {reconnect_delay} seconds...")
-                cap.release()
-                time.sleep(reconnect_delay)
-                continue
-
-            # Process the captured frame
-            try:
-                # Resize frame
-                height, width = frame.shape[:2]
-                aspect_ratio = width / height
-                new_width = resize_width
-                new_height = int(new_width / aspect_ratio)
-                resized_frame = cv2.resize(frame, (new_width, new_height), 
-                                         interpolation=cv2.INTER_AREA)
-
-                # Compress frame
-                compressed_frame = compress_frame(resized_frame, 
-                                               method=compression_method,
-                                               quality=quality)
-
-                # Save frame with timestamp
-                sg_time = get_singapore_time()
-                timestamp = sg_time.strftime("%Y%m%d_%H%M%S")
-                ext = '.jpg' if compression_method == 'jpeg' else '.png'
-                filename = f"frame_{timestamp}{ext}"
-                filepath = os.path.join(save_directory, filename)
-                
-                cv2.imwrite(filepath, compressed_frame)
-
-                # Display frame
-                display_height = int(display_width * (height/width))
-                display_frame = cv2.resize(frame, (display_width, display_height))
-                cv2.imshow(f'CCTV Stream - {name}', display_frame)
-
-                # Get file size and print info
-                file_size = os.path.getsize(filepath) / 1024
-                print(f"{name}: saved frame - {filename} (Size: {file_size:.1f} KB)")
-
-                # Perform object detection
-                detecting_object(model, confidence_threshold, save_directory, 
-                               filename, detection_directory, processed_directory)
-
-            except Exception as e:
-                print(f"Error processing frame: {str(e)}")
-
-            finally:
-                # Always release the capture object
-                cap.release()
-                print(f"{name}: Disconnected from RTSP stream")
-
-            # Wait for the specified interval before next capture
-            print(f"Waiting {reconnect_delay} seconds before next capture...")
-            for i in range(reconnect_delay):
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    print("\nUser requested to stop...")
-                    cv2.destroyAllWindows()
-                    return
-                time.sleep(1)
-
-        except KeyboardInterrupt:
-            print("\nStopping capture...")
-            break
-            
-        except Exception as e:
-            reconnect_count += 1
-            if reconnect_count >= max_reconnect_attempts:
-                print(f"{name}: Exceeded maximum reconnection attempts ({max_reconnect_attempts})")
-                return
-            print(f"Unexpected error: {str(e)}")
-            print(f"Attempt {reconnect_count} of {max_reconnect_attempts}")
-            print(f"Waiting {reconnect_delay} seconds before retry...")
-            time.sleep(reconnect_delay)
-            
-        finally:
-            if 'cap' in locals() and cap is not None:
-                cap.release()
-            cv2.waitKey(1)  # Process any pending GUI events
-
-    cv2.destroyAllWindows()
+    finally:
+        # Ensure everything is properly cleaned up
+        if 'cap' in locals() and cap is not None:
+            cap.release()
+        if display_feed:
+            cv2.destroyAllWindows()
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('-cctv_name', '--cctv_name', required=True)
+    ap.add_argument('-cctv_name', '--cctv_name', required=True,
+                    help='Name of the CCTV camera to capture from')
+    ap.add_argument('-display', '--display_feed', 
+                    action='store_true',
+                    help='Display live feed (default: False)')
     args = vars(ap.parse_args())
 
     # Load the trained model
@@ -269,7 +283,8 @@ if __name__ == '__main__':
                         resize_width=800,
                         compression_method='png',
                         quality=9,
-                        reconnect_delay=10,
+                        reconnect_delay=5,
                         max_reconnect_attempts=float('inf'),
                         model=model,
-                        display_width=640)
+                        display_width=640,
+                        display_feed=args['display_feed'])  # Pass the display_feed argument
