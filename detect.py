@@ -104,7 +104,7 @@ if __name__ == "__main__":
     date = input('Enter date (YYYYMMDD): ')
 
     # Replace with your actual model path
-    model_path = "build_custom_model/runs/train/20241207_082659/weights/best.pt"  # Update this path if needed
+    model_path = "build_custom_model/runs/train/20241209_231950/weights/best.pt"  # Update this path if needed
 
     # Run detection
     detect_tram(
