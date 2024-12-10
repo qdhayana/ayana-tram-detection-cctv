@@ -40,6 +40,7 @@ def connect_rtsp(rtsp_url, max_retries=3, retry_delay=2):
         cap = cv2.VideoCapture(rtsp_url)
         if cap.isOpened():
             print(f"Successfully connected to RTSP stream on attempt {attempt + 1}")
+            time.sleep(1)  # Wait for 2 seconds before returning
             return cap
         print(f"Connection attempt {attempt + 1} failed. Retrying in {retry_delay} seconds...")
         time.sleep(retry_delay)
@@ -248,6 +249,8 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('-cctv_name', '--cctv_name', required=True,
                     help='Name of the CCTV camera to capture from')
+    ap.add_argument('-i', '--interval', required=False, default=5, type=int,
+                    help='Interval between frame captures in seconds')
     args = vars(ap.parse_args())
 
     # Load the trained model
@@ -256,10 +259,10 @@ if __name__ == '__main__':
 
     print(f"Model loaded from: {model_path}")
     detect_tram_on_cctv(args['cctv_name'], 
-                        interval=10,
+                        interval=args['interval'],
                         resize_width=800,
                         compression_method='png',
                         quality=9,
-                        reconnect_delay=5,
+                        reconnect_delay=2,
                         max_reconnect_attempts=float('inf'),
                         model=model)
