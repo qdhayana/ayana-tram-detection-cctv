@@ -3,11 +3,16 @@ import shutil
 from sklearn.model_selection import train_test_split
 import random
 import glob
+import yaml
 
 def create_dataset_splits(
     train_ratio=0.8,     # 80% for training, 20% for validation
     random_seed=42       # For reproducibility
 ):
+    # Move to the root directory
+    file_classes = 'data/labels/classes.txt'
+    shutil.move('data/labels/train/classes.txt', file_classes)
+
     # Define source directories
     source_images = "data/images/train"
     source_labels = "data/labels/train"
@@ -66,14 +71,15 @@ def create_dataset_splits(
     print(f"Validation set: {moved_count['val']} images and labels")
     
     # Create data.yaml file
+    
+    names = [n for n in open(file_classes).read().split('\n') if n != '']
     yaml_content = {
         'train': './data/images/train',  # Relative paths
         'val': './data/images/val',
-        'nc': 4,  # number of classes
-        'names': ['ayana_tram', 'unknown', 'car', 'ayana_buggy']  # class names
+        'nc': len(names),  # number of classes
+        'names': names  # class names
     }
     
-    import yaml
     yaml_path = 'data/data.yaml'
     with open(yaml_path, 'w') as f:
         yaml.dump(yaml_content, f)

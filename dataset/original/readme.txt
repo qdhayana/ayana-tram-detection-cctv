@@ -1,0 +1,1 @@
+A directory to store the AVI videos for each date from Security Dept.

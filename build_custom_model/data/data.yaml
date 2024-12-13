@@ -1,8 +1,7 @@
 names:
 - ayana_tram
-- unknown
 - car
 - ayana_buggy
-nc: 4
+nc: 3
 train: /Users/fchrulk/AHM/Production/ayana-tram-detection-cctv/build_custom_model/data/images/train
 val: /Users/fchrulk/AHM/Production/ayana-tram-detection-cctv/build_custom_model/data/images/val

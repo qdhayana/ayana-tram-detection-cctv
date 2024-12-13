@@ -1,4 +1,12 @@
 __pycache__
 .DS_STORE
 *.py[cod]
+.ipynb_checkpoints
 production/
+dataset/**/*.jpg
+dataset/**/*.mp4
+dataset/**/*.avi
+!dataset/**/readme.txt
+analysis_report.txt
+tram_arrivals.csv
+debug_frames/

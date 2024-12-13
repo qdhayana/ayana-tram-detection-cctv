@@ -1,0 +1,1 @@
+A directory to store the captured frames for each date.
