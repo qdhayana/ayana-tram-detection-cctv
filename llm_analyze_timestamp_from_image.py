@@ -41,7 +41,7 @@ class ImageAnalyzer:
 
     def analyze_image(self, image_path: Union[str, Path], custom_prompt: str = None) -> str:
         """
-        Analyze an image using the GPT-4 Vision model.
+        Analyze an image using the GPT-4o model.
         
         Args:
             image_path: Path to the image file

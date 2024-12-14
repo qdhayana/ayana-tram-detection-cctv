@@ -9,4 +9,4 @@ dataset/**/*.avi
 !dataset/**/readme.txt
 analysis_report.txt
 tram_arrivals.csv
-debug_frames/
+build_custom_model/yolo*.pt

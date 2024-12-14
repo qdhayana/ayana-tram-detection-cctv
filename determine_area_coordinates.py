@@ -100,7 +100,7 @@ def main(_points):
     signal.signal(signal.SIGINT, signal_handler)
     
     try:
-        image_path = 'dataset/captured_frames/2024-12-02/ayana_tram_stop_20241202_071447/ayana_tram_stop_20141202_071442.jpg'  # Use your first frame
+        image_path = 'ayana_tram_stop_get_coordinates.jpg'
         
         # Create selector instance
         selector = AreaSelector(_points)

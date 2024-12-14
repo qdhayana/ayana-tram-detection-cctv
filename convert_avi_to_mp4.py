@@ -152,8 +152,8 @@ def convert_videos_sequential(input_dir, output_dir):
 if __name__ == "__main__":
     # Set your paths here
     date = input("Enter date (YYYY-MM-DD): ")
-    input_directory = f"source/{date}"
-    output_directory = f"converted/{date}"
+    input_directory = f"dataset/original/{date}"
+    output_directory = f"dataset/converted/{date}"
     
     # Start conversion
     convert_videos_sequential(input_directory, output_directory)
